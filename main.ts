@@ -25,7 +25,7 @@ type ChatResponse = {
   }[]
 }
 
-const review = async (endpoint: string, model: string) => {
+const review = async ({ endpoint, model, prompt }: { endpoint: string; model: string; prompt: string }) => {
   const response = await fetch(new URL('/v1/chat/completions', endpoint), {
     method: 'POST',
     headers: {
@@ -36,7 +36,7 @@ const review = async (endpoint: string, model: string) => {
       messages: [
         {
           role: 'user',
-          content: '量子力学について、100文字以内で説明して。',
+          content: prompt,
         },
       ],
       stream: false,
@@ -58,8 +58,10 @@ const main = async () => {
   console.log('endpoint', endpoint)
   const model = getEnv('LLM_MODEL')
   console.log('model', model)
+  const prompt = getEnv('LLM_PROMPT')
+  console.log('prompt', prompt)
 
-  await review(endpoint, model)
+  await review({ endpoint, model, prompt })
 
   console.log('end')
 }

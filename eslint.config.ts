@@ -17,7 +17,7 @@ const eslintConfig = defineConfig([
     },
     rules: {},
   },
-  globalIgnores(['node_modules/**']),
+  globalIgnores(['node_modules/**', 'eslint.config.ts']),
 ])
 
 export default eslintConfig
