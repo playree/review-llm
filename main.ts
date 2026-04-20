@@ -25,6 +25,14 @@ type ChatResponse = {
   }[]
 }
 
+type GitLabMrResponse = {
+  source_branch: string
+  changes?: {
+    diff: string
+    new_path: string
+  }[]
+}
+
 const review = async ({ endpoint, model, prompt }: { endpoint: string; model: string; prompt: string }) => {
   const response = await fetch(new URL('/v1/chat/completions', endpoint), {
     method: 'POST',
@@ -51,6 +59,38 @@ const review = async ({ endpoint, model, prompt }: { endpoint: string; model: st
   return content
 }
 
+const getGitlabMr = async ({
+  token,
+  serverUrl,
+  projectId,
+  mrId,
+}: {
+  token: string
+  serverUrl: string
+  projectId: string
+  mrId: string
+}) => {
+  const response = await fetch(new URL(`/api/v4/projects/${projectId}/merge_requests/${mrId}/changes`, serverUrl), {
+    method: 'GET',
+    headers: {
+      'PRIVATE-TOKEN': token,
+    },
+  })
+
+  const result = (await response.json()) as GitLabMrResponse
+  console.log(result)
+
+  if (!result.changes || result.changes.length === 0) {
+    return { changes: [] }
+  }
+
+  const changes = result.changes.map(({ new_path, diff }) => {
+    return { path: new_path, diff }
+  })
+
+  return { changes }
+}
+
 const main = async () => {
   console.log('start')
 
@@ -61,7 +101,21 @@ const main = async () => {
   const prompt = getEnv('LLM_PROMPT')
   console.log('prompt', prompt)
 
-  await review({ endpoint, model, prompt })
+  const serverUrl = getEnv('CI_SERVER_URL')
+  console.log('serverUrl', serverUrl)
+  const projectId = getEnv('CI_PROJECT_ID')
+  console.log('projectId', projectId)
+  const mrId = getEnv('CI_MERGE_REQUEST_IID')
+  console.log('mrId', mrId)
+  const token = getEnv('GITLAB_ACCESS_TOKEN')
+  console.log('token', token)
+  const pattern = getEnv('TARGET_FILE_REGEX')
+  console.log('pattern', pattern)
+
+  const mr = await getGitlabMr({ token, serverUrl, projectId, mrId })
+  const regex = new RegExp(pattern)
+  const targets = mr.changes.filter((value) => regex.test(value.path))
+  // await review({ endpoint, model, prompt })
 
   console.log('end')
 }
