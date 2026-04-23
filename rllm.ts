@@ -2,10 +2,18 @@ import { rllmConfig } from './rllm-config.ts'
 import { getGithubPr } from './rllm-lib.ts'
 
 const main = async () => {
-  console.log('Review LLM start')
-
   const { llm, src } = rllmConfig
-  console.log('Config:', { llm, src: { type: src.type, include: src.include, exclude: src.exclude } })
+  console.log(
+    '# Review LLM\n',
+    `
+- llm.endpoint : ${llm.endpoint}
+- llm.model : ${llm.model}
+- llm.prompt : ${llm.prompt}
+- src.type : ${src.type}
+- src.include : ${src.include ? `\`${src.include.join('`, `')}\`` : ''}
+- src.exclude : ${src.exclude ? `\`${src.exclude.join('`, `')}\`` : ''}
+`,
+  )
 
   switch (src.type) {
     case 'github':
@@ -33,7 +41,7 @@ const main = async () => {
   //   // await review({ endpoint, model, prompt })
   // }
 
-  console.log('Review LLM end')
+  console.log('\nend.')
 }
 
 main()

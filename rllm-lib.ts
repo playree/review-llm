@@ -46,7 +46,20 @@ type ChatResponse = {
   }[]
 }
 
-export const review = async ({ endpoint, model, prompt }: { endpoint: string; model: string; prompt: string }) => {
+type FileSrc = { filename: string; patch: string; raw: string }
+type TargetSrc = { ref: string; files: FileSrc[] }
+
+export const review = async ({
+  endpoint,
+  model,
+  prompt,
+  src,
+}: {
+  endpoint: string
+  model: string
+  prompt: string
+  src: FileSrc
+}) => {
   const response = await fetch(new URL('/v1/chat/completions', endpoint), {
     method: 'POST',
     headers: {
@@ -57,7 +70,7 @@ export const review = async ({ endpoint, model, prompt }: { endpoint: string; mo
       messages: [
         {
           role: 'user',
-          content: prompt,
+          content: `${prompt}\n\n${src.filename}\n\n${src.raw}`,
         },
       ],
       stream: false,
@@ -65,10 +78,8 @@ export const review = async ({ endpoint, model, prompt }: { endpoint: string; mo
   })
 
   const result = (await response.json()) as ChatResponse
-  console.log(result)
-
   const content = result?.choices[0]?.message.content
-  console.log(content)
+  console.log(`\n## ${src.filename}\n`, content)
   return content
 }
 
@@ -110,7 +121,13 @@ type GithubPrFilesResponse = {
   patch: string
 }[]
 
-export const getGithubPr = async ({ token, repository, pullRequestNumber, include, exclude }: GithubSrc['src']) => {
+export const getGithubPr = async ({
+  token,
+  repository,
+  pullRequestNumber,
+  include,
+  exclude,
+}: GithubSrc['src']): Promise<TargetSrc> => {
   const prResponse = await fetch(new URL(`/repos/${repository}/pulls/${pullRequestNumber}`, 'https://api.github.com'), {
     method: 'GET',
     headers: {
@@ -136,8 +153,14 @@ export const getGithubPr = async ({ token, repository, pullRequestNumber, includ
     ref: prResult.head.ref,
     files: await Promise.all(
       prFilesResult
+        // include/excludeで対象ファイルを選定
         .filter(({ filename, patch }) => !!patch && isTarget({ filename, include, exclude }))
+        // 対象ファイルの内容を取得
         .map(async ({ filename, raw_url, patch }) => {
+          if (!patch) {
+            // バイナリ(もしくは巨大ファイル)
+            return { filename, patch, raw: '' }
+          }
           const prFilesResponse = await fetch(raw_url, {
             method: 'GET',
             headers: {
@@ -148,7 +171,15 @@ export const getGithubPr = async ({ token, repository, pullRequestNumber, includ
         }),
     ),
   }
-  console.log('getGithubPr', ret.ref, ret.files.length)
+  console.log(
+    '# Github PR\n',
+    `
+- repository : ${repository}
+- pullRequestNumber : ${pullRequestNumber}
+- ref : ${ret.ref}
+- files.length : ${ret.files.length}
+`,
+  )
   return ret
 }
 
