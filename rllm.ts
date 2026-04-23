@@ -4,9 +4,8 @@ import { getGithubPr, review } from './rllm-lib.ts'
 const main = async () => {
   const { llm, src } = rllmConfig
   console.log(
-    '# Review LLM\n',
+    '# Review LLM v0.1.0\n',
     `
-- llm.endpoint : ${llm.endpoint}
 - llm.model : ${llm.model}
 - llm.prompt : ${llm.prompt}
 - src.type : ${src.type}
@@ -31,4 +30,7 @@ const main = async () => {
   console.log('\nend.')
 }
 
-main()
+main().catch((err) => {
+  console.error(err)
+  process.exit(1)
+})

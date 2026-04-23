@@ -3,21 +3,9 @@ import prettierConfig from 'eslint-config-prettier'
 import { defineConfig, globalIgnores } from 'eslint/config'
 import tseslint from 'typescript-eslint'
 
-const eslintConfig = defineConfig([
+export default defineConfig([
   eslint.configs.recommended,
-  ...tseslint.configs.recommended,
+  ...tseslint.configs.recommendedTypeChecked,
   prettierConfig,
-  {
-    // 対象ファイル
-    files: ['**/*.ts', '**/*.tsx'],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.json'],
-      },
-    },
-    rules: {},
-  },
   globalIgnores(['node_modules/**', 'eslint.config.ts']),
 ])
-
-export default eslintConfig

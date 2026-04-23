@@ -19,7 +19,7 @@ type GitlabSrc = Readonly<{
   }>
 }>
 export type RllmConfig = Readonly<{
-  llm: Readonly<{ endpoint: string; model: string; prompt: string }>
+  llm: Readonly<{ endpoint: string; apiKey?: string; model: string; prompt: string }>
 }> &
   (GithubSrc | GitlabSrc)
 
@@ -61,13 +61,11 @@ type TargetSrc = { ref: string; files: FileSrc[] }
 
 export const review = async ({
   endpoint,
+  apiKey,
   model,
   prompt,
   src,
-}: {
-  endpoint: string
-  model: string
-  prompt: string
+}: RllmConfig['llm'] & {
   src: FileSrc
 }) => {
   if (!src.raw) {
@@ -80,6 +78,7 @@ export const review = async ({
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
     },
     body: JSON.stringify({
       model,
@@ -95,8 +94,17 @@ export const review = async ({
   const end = performance.now()
   const duration = end - start
 
+  if (!response.ok) {
+    console.warn(`\n## ${src.filename}\n`, 'Fetch Failed')
+    return null
+  }
+
   const result = (await response.json()) as ChatResponse
-  const content = result?.choices[0]?.message.content
+  if (!result.choices?.[0]?.message?.content) {
+    console.warn(`\n## ${src.filename}\n`, 'LLM returned empty or invalid response')
+    return null
+  }
+  const content = result.choices[0].message.content
   console.log(`\n## ${src.filename}\n`, content)
   console.log(`\nTime ${duration.toFixed(2)} ms\n`)
 
@@ -115,19 +123,11 @@ const isTarget = ({
   include?: RegExp[] | undefined
   exclude?: RegExp[] | undefined
 }) => {
-  if (include) {
-    for (const regex of include) {
-      if (!regex.test(filename)) {
-        return false
-      }
-    }
+  if (include?.length) {
+    if (!include.some((re) => re.test(filename))) return false // 少なくとも1つに一致すればOK
   }
-  if (exclude) {
-    for (const regex of exclude) {
-      if (regex.test(filename)) {
-        return false
-      }
-    }
+  if (exclude?.length) {
+    if (exclude.some((re) => re.test(filename))) return false // どれかに一致したら除外
   }
   return true
 }
@@ -168,7 +168,7 @@ export const getGithubPr = async ({
   }
 
   const prFilesResponse = await fetch(
-    new URL(`/repos/${repository}/pulls/${pullRequestNumber}/files?per_page=100&page=1`, 'https://api.github.com'),
+    new URL(`/repos/${repository}/pulls/${pullRequestNumber}/files?per_page=${limit}&page=1`, 'https://api.github.com'),
     {
       method: 'GET',
       headers: {
@@ -192,13 +192,18 @@ export const getGithubPr = async ({
             return { filename, patch, raw: '' }
           }
 
-          const prFilesResponse = await fetch(raw_url, {
-            method: 'GET',
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          })
-          return { filename, patch, raw: await prFilesResponse.text() }
+          try {
+            const prFilesResponse = await fetch(raw_url, {
+              method: 'GET',
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            })
+            return { filename, patch, raw: await prFilesResponse.text() }
+          } catch (err) {
+            console.warn(`Error fetching ${filename}:`, err)
+            return { filename, patch, raw: '' }
+          }
         }),
     ),
   }
