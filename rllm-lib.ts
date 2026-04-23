@@ -75,6 +75,7 @@ export const review = async ({
     return null
   }
 
+  const start = performance.now()
   const response = await fetch(new URL('/v1/chat/completions', endpoint), {
     method: 'POST',
     headers: {
@@ -91,12 +92,13 @@ export const review = async ({
       stream: false,
     }),
   })
+  const end = performance.now()
+  const duration = end - start
 
   const result = (await response.json()) as ChatResponse
-  debug(result)
   const content = result?.choices[0]?.message.content
   console.log(`\n## ${src.filename}\n`, content)
-  console.log()
+  console.log(`\nTime ${duration.toFixed(2)} ms\n`)
 
   const usage = result?.usage
   debug(usage)
