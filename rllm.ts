@@ -1,5 +1,5 @@
 import { rllmConfig } from './rllm-config.ts'
-import { getGithubPr } from './rllm-lib.ts'
+import { getGithubPr, review } from './rllm-lib.ts'
 
 const main = async () => {
   const { llm, src } = rllmConfig
@@ -16,30 +16,17 @@ const main = async () => {
   )
 
   switch (src.type) {
-    case 'github':
-      await getGithubPr(src)
+    case 'github': {
+      const pr = await getGithubPr(src)
+      for (const file of pr.files) {
+        await review({ ...llm, src: file })
+      }
       break
-    case 'gitlab':
+    }
+    case 'gitlab': {
       break
+    }
   }
-
-  // if (targetSrc === 'github') {
-  //   const token = getEnv('GITHUB_TOKEN')
-  //   const repo = getEnv('GITHUB_ACTION_REPOSITORY')
-  //   const prNum = getEnv('GITHUB_PULL_REQUEST_NUM')
-  //   await getGithubPr({ token, repo, prNum })
-  // }
-  // if (targetSrc === 'gitlab') {
-  //   const token = getEnv('GITLAB_TOKEN')
-  //   const serverUrl = getEnv('CI_SERVER_URL')
-  //   const projectId = getEnv('CI_PROJECT_ID')
-  //   const mrId = getEnv('CI_MERGE_REQUEST_IID')
-
-  //   const mr = await getGitlabMr({ token, serverUrl, projectId, mrId })
-  //   const regex = new RegExp(targetFileRegex)
-  //   const targets = mr.changes.filter((value) => regex.test(value.path))
-  //   // await review({ endpoint, model, prompt })
-  // }
 
   console.log('\nend.')
 }

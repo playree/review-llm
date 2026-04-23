@@ -6,7 +6,7 @@ import { type RllmConfig, getEnv, getEnvNum } from './rllm-lib.ts'
 export const rllmConfig: RllmConfig = {
   llm: {
     endpoint: 'http://172.16.123.50:11434',
-    model: 'qwen2.5-coder:7b',
+    model: 'qwen3.6:35b',
     prompt: '不具合の発見を優先にレビューして',
   },
   src: {
@@ -14,6 +14,7 @@ export const rllmConfig: RllmConfig = {
     token: getEnv('GITHUB_TOKEN'),
     repository: getEnv('GITHUB_REPOSITORY'),
     pullRequestNumber: getEnvNum('GITHUB_PULL_REQUEST_NUM'),
+    limit: 100,
     include: [/\.ts$/],
   },
 }
