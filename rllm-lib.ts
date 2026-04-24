@@ -1,3 +1,5 @@
+import { performance } from 'node:perf_hooks'
+
 type GithubSrc = Readonly<{
   src: Readonly<{
     type: 'github'
@@ -5,8 +7,8 @@ type GithubSrc = Readonly<{
     repository: string
     pullRequestNumber: number
     limit: number
-    include?: RegExp[] | undefined
-    exclude?: RegExp[] | undefined
+    include?: string[] | undefined
+    exclude?: string[] | undefined
   }>
 }>
 type GitlabSrc = Readonly<{
@@ -14,8 +16,8 @@ type GitlabSrc = Readonly<{
     type: 'gitlab'
     server: string
     limit: number
-    include?: RegExp[] | undefined
-    exclude?: RegExp[] | undefined
+    include?: string[] | undefined
+    exclude?: string[] | undefined
   }>
 }>
 export type RllmConfig = Readonly<{
@@ -120,14 +122,18 @@ const isTarget = ({
   exclude,
 }: {
   filename: string
-  include?: RegExp[] | undefined
-  exclude?: RegExp[] | undefined
+  include?: string[] | undefined
+  exclude?: string[] | undefined
 }) => {
   if (include?.length) {
-    if (!include.some((re) => re.test(filename))) return false // 少なくとも1つに一致すればOK
+    if (!include.some((re) => new RegExp(re).test(filename))) {
+      return false
+    }
   }
   if (exclude?.length) {
-    if (exclude.some((re) => re.test(filename))) return false // どれかに一致したら除外
+    if (exclude.some((re) => new RegExp(re).test(filename))) {
+      return false
+    }
   }
   return true
 }

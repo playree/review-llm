@@ -15,7 +15,7 @@ export const rllmConfig: RllmConfig = {
     repository: getEnv('GITHUB_REPOSITORY'),
     pullRequestNumber: getEnvNum('GITHUB_PULL_REQUEST_NUM'),
     limit: 100,
-    include: [/\.ts$/],
-    exclude: [/^rllm-config\.ts$/],
+    include: ['\.ts$'],
+    exclude: ['^rllm-config\.ts$'],
   },
 }
