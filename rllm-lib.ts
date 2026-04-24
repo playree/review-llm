@@ -20,8 +20,24 @@ type GitlabSrc = Readonly<{
     exclude?: string[] | undefined
   }>
 }>
+type LlmOllama = {
+  type: 'ollama'
+  endpoint: string
+  apiKey?: string
+  model: string
+  prompt: string
+  think?: boolean
+  num_ctx?: number
+}
+type LlmOpenAI = {
+  type: 'openai'
+  endpoint: string
+  apiKey?: string
+  model: string
+  prompt: string
+}
 export type RllmConfig = Readonly<{
-  llm: Readonly<{ endpoint: string; apiKey?: string; model: string; prompt: string }>
+  llm: Readonly<LlmOllama> | Readonly<LlmOpenAI>
 }> &
   (GithubSrc | GitlabSrc)
 
@@ -42,6 +58,74 @@ export const debug = (params: object) => {
   }
 }
 
+type FileSrc = { filename: string; patch: string; raw: string }
+type TargetSrc = { ref: string; files: FileSrc[] }
+
+type GenerateResponse = {
+  response: string
+  done: boolean
+  thinking: string
+  total_duration: number
+  load_duration: number
+  prompt_eval_count: number
+  eval_count: number
+  eval_duration: number
+}
+
+export const reviewOllama = async ({
+  endpoint,
+  apiKey,
+  model,
+  prompt,
+  think,
+  num_ctx,
+  src,
+}: LlmOllama & {
+  src: FileSrc
+}) => {
+  if (!src.raw) {
+    console.log(`\n## ${src.filename}\n`, 'Skip')
+    return null
+  }
+
+  const start = performance.now()
+  const response = await fetch(new URL('/api/generate', endpoint), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(apiKey && { Authorization: `Bearer ${apiKey}` }),
+    },
+    body: JSON.stringify({
+      model,
+      prompt: `${prompt}\n\n${src.filename}\n\n${src.raw}`,
+      stream: false,
+      think,
+      options: num_ctx ? { num_ctx } : undefined,
+    }),
+  })
+  const end = performance.now()
+  const duration = end - start
+
+  if (!response.ok) {
+    console.warn(`\n## ${src.filename}\n`, 'Fetch Failed')
+    return null
+  }
+
+  const result = (await response.json()) as GenerateResponse
+  if (!result.response) {
+    console.warn(`\n## ${src.filename}\n`, 'LLM returned empty or invalid response')
+    return null
+  }
+  const content = result.response
+  console.log(`\n## ${src.filename}\n`, content)
+  console.log(`\nTime ${duration.toFixed(2)} ms\n`)
+
+  const { thinking, total_duration, load_duration, prompt_eval_count, eval_count, eval_duration } = result
+  debug({ thinking, total_duration, load_duration, prompt_eval_count, eval_count, eval_duration })
+
+  return content
+}
+
 type ChatResponse = {
   usage: {
     prompt_tokens: number
@@ -58,16 +142,13 @@ type ChatResponse = {
   }[]
 }
 
-type FileSrc = { filename: string; patch: string; raw: string }
-type TargetSrc = { ref: string; files: FileSrc[] }
-
-export const review = async ({
+export const reviewOpenai = async ({
   endpoint,
   apiKey,
   model,
   prompt,
   src,
-}: RllmConfig['llm'] & {
+}: LlmOpenAI & {
   src: FileSrc
 }) => {
   if (!src.raw) {
@@ -114,6 +195,17 @@ export const review = async ({
   debug(usage)
 
   return content
+}
+
+export const review = async (
+  params: RllmConfig['llm'] & {
+    src: FileSrc
+  },
+) => {
+  if (params.type === 'ollama') {
+    return reviewOllama(params)
+  }
+  return reviewOpenai(params)
 }
 
 const isTarget = ({
@@ -168,8 +260,8 @@ export const getGithubPr = async ({
     },
   })
   const prResult = (await prResponse.json()) as GithubPrResponse
-  if (prResult.changed_files > limit) {
-    console.log('Limit Over', limit)
+  if (limit > 100 || prResult.changed_files > limit) {
+    console.log('Limit Over', limit > 100 ? 100 : limit)
     return { ref: '', files: [] }
   }
 

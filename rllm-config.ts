@@ -5,9 +5,12 @@ import { type RllmConfig, getEnv, getEnvNum } from './rllm-lib.ts'
  */
 export const rllmConfig: RllmConfig = {
   llm: {
+    type: 'ollama',
     endpoint: 'http://172.16.123.50:11434',
     model: 'qwen3.6:35b',
     prompt: '不具合の発見を優先にレビューして',
+    think: false,
+    num_ctx: 65536,
   },
   src: {
     type: 'github',
