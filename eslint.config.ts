@@ -1,4 +1,4 @@
-import prettierConfig from 'eslint-config-prettier'
+import eslintConfigPrettier from 'eslint-config-prettier/flat'
 import { defineConfig, globalIgnores } from 'eslint/config'
 import tseslint from 'typescript-eslint'
 
@@ -12,5 +12,5 @@ export default defineConfig([
       },
     },
   },
-  prettierConfig,
+  eslintConfigPrettier,
 ])

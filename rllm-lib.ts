@@ -59,7 +59,7 @@ export const debug = (params: object) => {
 }
 
 type FileSrc = { filename: string; patch: string; raw: string }
-type TargetSrc = { ref: string; files: FileSrc[] }
+type TargetSrc = { ref: string; files: (() => Promise<FileSrc>)[] }
 
 type GenerateResponse = {
   response: string
@@ -79,10 +79,11 @@ export const reviewOllama = async ({
   prompt,
   think,
   num_ctx,
-  src,
+  fileSrc,
 }: LlmOllama & {
-  src: FileSrc
+  fileSrc: () => Promise<FileSrc>
 }) => {
+  const src = await fileSrc()
   if (!src.raw) {
     console.log(`\n## ${src.filename}\n`, 'Skip')
     return null
@@ -147,10 +148,11 @@ export const reviewOpenai = async ({
   apiKey,
   model,
   prompt,
-  src,
+  fileSrc,
 }: LlmOpenAI & {
-  src: FileSrc
+  fileSrc: () => Promise<FileSrc>
 }) => {
+  const src = await fileSrc()
   if (!src.raw) {
     console.log(`\n## ${src.filename}\n`, 'Skip')
     return null
@@ -199,7 +201,7 @@ export const reviewOpenai = async ({
 
 export const review = async (
   params: RllmConfig['llm'] & {
-    src: FileSrc
+    fileSrc: () => Promise<FileSrc>
   },
 ) => {
   if (params.type === 'ollama') {
@@ -279,31 +281,29 @@ export const getGithubPr = async ({
 
   const ret = {
     ref: prResult.head.ref,
-    files: await Promise.all(
-      prFilesResult
-        // include/excludeで対象ファイルを選定
-        .filter(({ filename, status }) => status !== 'removed' && isTarget({ filename, include, exclude }))
-        // 対象ファイルの内容を取得
-        .map(async ({ filename, raw_url, patch }) => {
-          if (!patch) {
-            // バイナリ(もしくは巨大ファイル)
-            return { filename, patch, raw: '' }
-          }
+    files: prFilesResult
+      // include/excludeで対象ファイルを選定
+      .filter(({ filename, status }) => status !== 'removed' && isTarget({ filename, include, exclude }))
+      // 対象ファイルの内容を取得
+      .map(({ filename, raw_url, patch }) => async () => {
+        if (!patch) {
+          // バイナリ(もしくは巨大ファイル)
+          return { filename, patch, raw: '' }
+        }
 
-          try {
-            const prFilesResponse = await fetch(raw_url, {
-              method: 'GET',
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            })
-            return { filename, patch, raw: await prFilesResponse.text() }
-          } catch (err) {
-            console.warn(`Error fetching ${filename}:`, err)
-            return { filename, patch, raw: '' }
-          }
-        }),
-    ),
+        try {
+          const res = await fetch(raw_url, {
+            method: 'GET',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          })
+          return { filename, patch, raw: await res.text() }
+        } catch (err) {
+          console.warn(`Error fetching ${filename}:`, err)
+          return { filename, patch, raw: '' }
+        }
+      }),
   }
   console.log(
     '# Github PR\n',

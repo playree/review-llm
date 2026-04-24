@@ -18,7 +18,7 @@ const main = async () => {
     case 'github': {
       const pr = await getGithubPr(src)
       for (const file of pr.files) {
-        await review({ ...llm, src: file })
+        await review({ ...llm, fileSrc: file })
       }
       break
     }
