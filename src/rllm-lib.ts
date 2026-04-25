@@ -58,7 +58,7 @@ export const debug = (params: object) => {
   }
 }
 
-type FileSrc = { filename: string; patch: string; raw: string }
+type FileSrc = { filename: string; patch?: string; raw?: string; raw_url?: string }
 type TargetSrc = { ref: string; files: (() => Promise<FileSrc>)[] }
 
 type GenerateResponse = {
@@ -83,13 +83,15 @@ export const reviewOllama = async ({
 }: LlmOllama & {
   fileSrc: () => Promise<FileSrc>
 }) => {
-  const { filename, raw } = await fileSrc()
+  const { filename, raw, raw_url } = await fileSrc()
   console.log(`\n## ${filename}\n`)
 
   if (!raw) {
     console.log('Skip')
     return null
   }
+
+  debug({ raw_url })
 
   const start = performance.now()
   const response = await fetch(new URL('/api/generate', endpoint), {
@@ -154,13 +156,15 @@ export const reviewOpenai = async ({
 }: LlmOpenAI & {
   fileSrc: () => Promise<FileSrc>
 }) => {
-  const { filename, raw } = await fileSrc()
+  const { filename, raw, raw_url } = await fileSrc()
   console.log(`\n## ${filename}\n`)
 
   if (!raw) {
     console.log('Skip')
     return null
   }
+
+  debug({ raw_url })
 
   const start = performance.now()
   const response = await fetch(new URL('/v1/chat/completions', endpoint), {
@@ -318,7 +322,7 @@ export const getGithubPr = async ({
       .map(({ filename, raw_url, patch }) => async () => {
         if (!patch) {
           // バイナリ(もしくは巨大ファイル)
-          return { filename, patch, raw: '' }
+          return { filename }
         }
 
         try {
@@ -329,11 +333,10 @@ export const getGithubPr = async ({
             },
           })
           const raw = await response.text()
-          debug({ filename, raw_url })
-          return { filename, patch, raw }
+          return { filename, patch, raw, raw_url }
         } catch (err) {
           console.warn(`Error fetching ${filename}:`, err)
-          return { filename, patch, raw: '' }
+          return { filename }
         }
       }),
   }

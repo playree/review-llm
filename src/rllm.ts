@@ -16,8 +16,8 @@ const main = async () => {
 
   switch (src.type) {
     case 'github': {
-      const pr = await getGithubPr(src)
-      await reviews({ ...llm, files: pr.files })
+      const { files } = await getGithubPr(src)
+      await reviews({ ...llm, files })
       break
     }
     case 'gitlab': {
