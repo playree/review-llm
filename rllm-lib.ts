@@ -84,8 +84,10 @@ export const reviewOllama = async ({
   fileSrc: () => Promise<FileSrc>
 }) => {
   const { filename, raw } = await fileSrc()
+  console.log(`\n## ${filename}\n`)
+
   if (!raw) {
-    console.log(`\n## ${filename}\n`, 'Skip')
+    console.log('Skip')
     return null
   }
 
@@ -108,21 +110,21 @@ export const reviewOllama = async ({
   const duration = end - start
 
   if (!response.ok) {
-    console.warn(`\n## ${filename}\n`, 'Fetch Failed')
+    console.warn('Fetch Failed')
     return null
   }
 
   const result = (await response.json()) as GenerateResponse
   if (!result.response) {
-    console.warn(`\n## ${filename}\n`, 'LLM returned empty or invalid response')
+    console.warn('LLM returned empty or invalid response')
     return null
   }
   const content = result.response
-  console.log(`\n## ${filename}\n`, content)
+  console.log(content)
   console.log(`\nTime ${duration.toFixed(2)} ms\n`)
 
   const { thinking, total_duration, load_duration, prompt_eval_count, eval_count, eval_duration } = result
-  debug({ thinking, total_duration, load_duration, prompt_eval_count, eval_count, eval_duration })
+  debug({ think: !!thinking, total_duration, load_duration, prompt_eval_count, eval_count, eval_duration })
 
   return { filename, content }
 }
@@ -153,8 +155,10 @@ export const reviewOpenai = async ({
   fileSrc: () => Promise<FileSrc>
 }) => {
   const { filename, raw } = await fileSrc()
+  console.log(`\n## ${filename}\n`)
+
   if (!raw) {
-    console.log(`\n## ${filename}\n`, 'Skip')
+    console.log('Skip')
     return null
   }
 
@@ -180,17 +184,17 @@ export const reviewOpenai = async ({
   const duration = end - start
 
   if (!response.ok) {
-    console.warn(`\n## ${filename}\n`, 'Fetch Failed')
+    console.warn('Fetch Failed')
     return null
   }
 
   const result = (await response.json()) as ChatResponse
   if (!result.choices?.[0]?.message?.content) {
-    console.warn(`\n## ${filename}\n`, 'LLM returned empty or invalid response')
+    console.warn('LLM returned empty or invalid response')
     return null
   }
   const content = result.choices[0].message.content
-  console.log(`\n## ${filename}\n`, content)
+  console.log(content)
   console.log(`\nTime ${duration.toFixed(2)} ms\n`)
 
   const usage = result?.usage
@@ -324,7 +328,9 @@ export const getGithubPr = async ({
               Authorization: `Bearer ${token}`,
             },
           })
-          return { filename, patch, raw: await response.text() }
+          const raw = await response.text()
+          debug({ filename, raw_url })
+          return { filename, patch, raw }
         } catch (err) {
           console.warn(`Error fetching ${filename}:`, err)
           return { filename, patch, raw: '' }
