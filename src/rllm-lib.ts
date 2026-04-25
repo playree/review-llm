@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { performance } from 'node:perf_hooks'
 
 type GithubSrc = Readonly<{
@@ -8,6 +9,7 @@ type GithubSrc = Readonly<{
     pullRequestNumber: number
     include?: string[] | undefined
     exclude?: string[] | undefined
+    useLocalSrc?: boolean
   }>
 }>
 type GitlabSrc = Readonly<{
@@ -275,6 +277,7 @@ export const getGithubPr = async ({
   pullRequestNumber,
   include,
   exclude,
+  useLocalSrc,
 }: GithubSrc['src']): Promise<TargetSrc> => {
   const prResponse = await fetch(new URL(`/repos/${repository}/pulls/${pullRequestNumber}`, 'https://api.github.com'), {
     method: 'GET',
@@ -326,14 +329,21 @@ export const getGithubPr = async ({
         }
 
         try {
-          const response = await fetch(raw_url, {
-            method: 'GET',
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          })
-          const raw = await response.text()
-          return { filename, patch, raw, raw_url }
+          if (useLocalSrc) {
+            // ローカルから取得
+            const raw = await readFile(filename, 'utf8')
+            return { filename, patch, raw, raw_url: filename }
+          } else {
+            // raw_urlから取得
+            const response = await fetch(raw_url, {
+              method: 'GET',
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            })
+            const raw = await response.text()
+            return { filename, patch, raw, raw_url }
+          }
         } catch (err) {
           console.warn(`Error fetching ${filename}:`, err)
           return { filename }
