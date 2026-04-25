@@ -6,7 +6,6 @@ type GithubSrc = Readonly<{
     token: string
     repository: string
     pullRequestNumber: number
-    limit: number
     include?: string[] | undefined
     exclude?: string[] | undefined
   }>
@@ -15,7 +14,6 @@ type GitlabSrc = Readonly<{
   src: Readonly<{
     type: 'gitlab'
     server: string
-    limit: number
     include?: string[] | undefined
     exclude?: string[] | undefined
   }>
@@ -26,6 +24,7 @@ type LlmOllama = {
   apiKey?: string
   model: string
   prompt: string
+  limit_files?: number
   think?: boolean
   num_ctx?: number
 }
@@ -35,6 +34,7 @@ type LlmOpenAI = {
   apiKey?: string
   model: string
   prompt: string
+  limit_files?: number
 }
 export type RllmConfig = Readonly<{
   llm: Readonly<LlmOllama> | Readonly<LlmOpenAI>
@@ -83,9 +83,9 @@ export const reviewOllama = async ({
 }: LlmOllama & {
   fileSrc: () => Promise<FileSrc>
 }) => {
-  const src = await fileSrc()
-  if (!src.raw) {
-    console.log(`\n## ${src.filename}\n`, 'Skip')
+  const { filename, raw } = await fileSrc()
+  if (!raw) {
+    console.log(`\n## ${filename}\n`, 'Skip')
     return null
   }
 
@@ -98,7 +98,7 @@ export const reviewOllama = async ({
     },
     body: JSON.stringify({
       model,
-      prompt: `${prompt}\n\n${src.filename}\n\n${src.raw}`,
+      prompt: `${prompt}\n\n${filename}\n\n${raw}`,
       stream: false,
       think,
       options: num_ctx ? { num_ctx } : undefined,
@@ -108,23 +108,23 @@ export const reviewOllama = async ({
   const duration = end - start
 
   if (!response.ok) {
-    console.warn(`\n## ${src.filename}\n`, 'Fetch Failed')
+    console.warn(`\n## ${filename}\n`, 'Fetch Failed')
     return null
   }
 
   const result = (await response.json()) as GenerateResponse
   if (!result.response) {
-    console.warn(`\n## ${src.filename}\n`, 'LLM returned empty or invalid response')
+    console.warn(`\n## ${filename}\n`, 'LLM returned empty or invalid response')
     return null
   }
   const content = result.response
-  console.log(`\n## ${src.filename}\n`, content)
+  console.log(`\n## ${filename}\n`, content)
   console.log(`\nTime ${duration.toFixed(2)} ms\n`)
 
   const { thinking, total_duration, load_duration, prompt_eval_count, eval_count, eval_duration } = result
   debug({ thinking, total_duration, load_duration, prompt_eval_count, eval_count, eval_duration })
 
-  return content
+  return { filename, content }
 }
 
 type ChatResponse = {
@@ -152,9 +152,9 @@ export const reviewOpenai = async ({
 }: LlmOpenAI & {
   fileSrc: () => Promise<FileSrc>
 }) => {
-  const src = await fileSrc()
-  if (!src.raw) {
-    console.log(`\n## ${src.filename}\n`, 'Skip')
+  const { filename, raw } = await fileSrc()
+  if (!raw) {
+    console.log(`\n## ${filename}\n`, 'Skip')
     return null
   }
 
@@ -170,7 +170,7 @@ export const reviewOpenai = async ({
       messages: [
         {
           role: 'user',
-          content: `${prompt}\n\n${src.filename}\n\n${src.raw}`,
+          content: `${prompt}\n\n${filename}\n\n${raw}`,
         },
       ],
       stream: false,
@@ -180,23 +180,23 @@ export const reviewOpenai = async ({
   const duration = end - start
 
   if (!response.ok) {
-    console.warn(`\n## ${src.filename}\n`, 'Fetch Failed')
+    console.warn(`\n## ${filename}\n`, 'Fetch Failed')
     return null
   }
 
   const result = (await response.json()) as ChatResponse
   if (!result.choices?.[0]?.message?.content) {
-    console.warn(`\n## ${src.filename}\n`, 'LLM returned empty or invalid response')
+    console.warn(`\n## ${filename}\n`, 'LLM returned empty or invalid response')
     return null
   }
   const content = result.choices[0].message.content
-  console.log(`\n## ${src.filename}\n`, content)
+  console.log(`\n## ${filename}\n`, content)
   console.log(`\nTime ${duration.toFixed(2)} ms\n`)
 
   const usage = result?.usage
   debug(usage)
 
-  return content
+  return { filename, content }
 }
 
 export const review = async (
@@ -208,6 +208,21 @@ export const review = async (
     return reviewOllama(params)
   }
   return reviewOpenai(params)
+}
+
+export const reviews = async (
+  params: RllmConfig['llm'] & {
+    files: (() => Promise<FileSrc>)[]
+  },
+) => {
+  const { files, ...llm } = params
+  if (llm.limit_files && llm.limit_files < files.length) {
+    console.warn('Limit over:', files.length)
+    return
+  }
+  for (const file of files) {
+    await review({ ...llm, fileSrc: file })
+  }
 }
 
 const isTarget = ({
@@ -250,7 +265,6 @@ export const getGithubPr = async ({
   token,
   repository,
   pullRequestNumber,
-  limit,
   include,
   exclude,
 }: GithubSrc['src']): Promise<TargetSrc> => {
@@ -262,26 +276,38 @@ export const getGithubPr = async ({
     },
   })
   const prResult = (await prResponse.json()) as GithubPrResponse
-  if (limit > 100 || prResult.changed_files > limit) {
-    console.log('Limit Over', limit > 100 ? 100 : limit)
-    return { ref: '', files: [] }
-  }
 
-  const prFilesResponse = await fetch(
-    new URL(`/repos/${repository}/pulls/${pullRequestNumber}/files?per_page=${limit}&page=1`, 'https://api.github.com'),
-    {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github+json',
+  const perPage = 100
+  let allFiles: GithubPrFilesResponse = []
+  let page = 1
+  while (true) {
+    const response = await fetch(
+      new URL(
+        `/repos/${repository}/pulls/${pullRequestNumber}/files?per_page=${perPage}&page=${page}`,
+        'https://api.github.com',
+      ),
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+        },
       },
-    },
-  )
-  const prFilesResult = (await prFilesResponse.json()) as GithubPrFilesResponse
+    )
+    const result = (await response.json()) as GithubPrFilesResponse
+    allFiles = allFiles.concat(result)
+
+    const linkHeader = response.headers.get('link')
+    if (linkHeader && linkHeader.includes('rel="next"')) {
+      page++
+    } else {
+      break
+    }
+  }
 
   const ret = {
     ref: prResult.head.ref,
-    files: prFilesResult
+    files: allFiles
       // include/excludeで対象ファイルを選定
       .filter(({ filename, status }) => status !== 'removed' && isTarget({ filename, include, exclude }))
       // 対象ファイルの内容を取得
@@ -292,13 +318,13 @@ export const getGithubPr = async ({
         }
 
         try {
-          const res = await fetch(raw_url, {
+          const response = await fetch(raw_url, {
             method: 'GET',
             headers: {
               Authorization: `Bearer ${token}`,
             },
           })
-          return { filename, patch, raw: await res.text() }
+          return { filename, patch, raw: await response.text() }
         } catch (err) {
           console.warn(`Error fetching ${filename}:`, err)
           return { filename, patch, raw: '' }
