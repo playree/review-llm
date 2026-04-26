@@ -16,13 +16,14 @@
 OllamaのAPIやOpenAI互換のAPIを利用して、
 Githubのプルリクエスト(PR)やGitLabのマージリクエスト(MR)をレビューするためのスクリプトです。
 
-セルフマネージドGitLab環境のCIに組み込みたくて、開発したものです。
+ローカル(もしくは独自サーバーに建てた)LLMとセルフマネージドGitLab環境のCIに組み込みたくて、開発したものです。\
+ローカルLLMでPRやMRをレビューしたいという人向けです。
 
 # スクリプト概要
 
 1. Github/GitLabのPR/MRを取得する。
 2. PR/MRの対象ファイルを取得する。
-3. 対象ファイルの内容をOllama/OpenAI互換のAPIにレビュー依頼。
+3. 対象ファイルの内容を1ファイル毎にOllama/OpenAI互換のAPIにレビュー依頼。
 4. レビュー結果を出力。
 
 - 言語はTypeScript\
@@ -31,6 +32,8 @@ Githubのプルリクエスト(PR)やGitLabのマージリクエスト(MR)をレ
   パッケージのインストール(`npm install`など)不要。
 - TypeScriptのまま直(コンパイルなしで)実行できる形\
   ファイル配置するだけで実行可能としたく、複雑な処理でもないのでいいかなと。
+- ファイルをまとめてではなく、1ファイル単位でレビュー\
+  ローカルLLMを想定しているので、そこまでコンテキストサイズが大きくない前提で。
 
 # クイックガイド
 
@@ -67,6 +70,8 @@ node --env-file=.env rllm.ts > review.md
 
 例.
 
+`rllm-config.ts`
+
 ```ts
 export const rllmConfig: RllmConfig = {
   llm: {
@@ -88,6 +93,14 @@ export const rllmConfig: RllmConfig = {
 }
 ```
 
+`.env`
+
+```ini
+GITHUB_TOKEN=github_pat_xxxx
+GITHUB_REPOSITORY=owner/repo
+GITHUB_PULL_REQUEST_NUM=1
+```
+
 ### LLM設定
 
 - llm.type : `ollama` | `openai` (必須)\
@@ -101,9 +114,11 @@ export const rllmConfig: RllmConfig = {
 - llm.limitFiles : レビュー可能なファイル数上限\
   上限を設定すると、オーバーしている場合はレビューを行いません。
 - llm.think : 思考の有無\
-  ※`type=ollama`でのみ指定できます。
+  ※`type=ollama`でのみ指定できます。\
+  基本的に思考有りなら精度が上がり、思考無しなら速度が速くなります。
 - llm.ctxSize : LLMのコンテキストサイズ\
-  ※`type=ollama`でのみ指定できます。
+  ※`type=ollama`でのみ指定できます。\
+  ソースを対象にするので、16Kぐらいは欲しいところ。
 
 ### ソース設定
 
@@ -115,7 +130,8 @@ export const rllmConfig: RllmConfig = {
 - src.pullRequestNumber : プルリクエストNo (必須)
 - src.include : レビュー対象のファイルの正規表現
 - src.exclude : レビュー対象外とするファイルの正規表現
-- src.useLocalSrc : ローカルのソースを使用するか
+- src.useLocalSrc : ローカルのソースを使用するか\
+  CIなどでカレントディレクトリにソースが存在する場合には、ローカルのソースを利用できます。
 
 ### GitLab
 
@@ -126,7 +142,8 @@ export const rllmConfig: RllmConfig = {
 - src.mergeRequestIid : マージリクエストID (必須)
 - src.include : レビュー対象のファイルの正規表現
 - src.exclude : レビュー対象外とするファイルの正規表現
-- src.useLocalSrc : ローカルのソースを使用するか
+- src.useLocalSrc : ローカルのソースを使用するか\
+  CIなどでカレントディレクトリにソースが存在する場合には、ローカルのソースを利用できます。
 
 ### デバッグ設定
 
