@@ -16,8 +16,12 @@ type GitlabSrc = Readonly<{
   src: Readonly<{
     type: 'gitlab'
     server: string
+    token: string
+    projectId: number
+    mergeRequestIid: number
     include?: string[] | undefined
     exclude?: string[] | undefined
+    useLocalSrc?: boolean
   }>
 }>
 type LlmOllama = {
@@ -362,42 +366,102 @@ export const getGithubPr = async ({
   return ret
 }
 
-// type GitLabMrResponse = {
-//   source_branch: string
-//   changes?: {
-//     diff: string
-//     new_path: string
-//   }[]
-// }
+type GitLabMrResponse = {
+  source_branch: string
+  references: {
+    full: string
+  }
+}
 
-// export const getGitlabMr = async ({
-//   token,
-//   serverUrl,
-//   projectId,
-//   mrId,
-// }: {
-//   token: string
-//   serverUrl: string
-//   projectId: string
-//   mrId: string
-// }) => {
-//   const response = await fetch(new URL(`/api/v4/projects/${projectId}/merge_requests/${mrId}/changes`, serverUrl), {
-//     method: 'GET',
-//     headers: {
-//       'PRIVATE-TOKEN': token,
-//     },
-//   })
+type GitLabMrFilesResponse = {
+  new_path: string
+  deleted_file: boolean
+  diff: string
+}[]
 
-//   const result = (await response.json()) as GitLabMrResponse
-//   console.log(result)
+export const getGitLabMr = async ({
+  token,
+  server,
+  projectId,
+  mergeRequestIid,
+  include,
+  exclude,
+  useLocalSrc,
+}: GitlabSrc['src']): Promise<TargetSrc> => {
+  const mrResponse = await fetch(new URL(`/api/v4/projects/${projectId}/merge_requests/${mergeRequestIid}`, server), {
+    method: 'GET',
+    headers: {
+      'PRIVATE-TOKEN': token,
+    },
+  })
+  const mrResult = (await mrResponse.json()) as GitLabMrResponse
 
-//   if (!result.changes || result.changes.length === 0) {
-//     return { changes: [] }
-//   }
+  const perPage = 100
+  let allFiles: GitLabMrFilesResponse = []
+  let page: string | null = '1'
+  while (page) {
+    const response = await fetch(
+      new URL(
+        `/api/v4/projects/${projectId}/merge_requests/${mergeRequestIid}/diffs?per_page=${perPage}&page=${page}`,
+        server,
+      ),
+      {
+        method: 'GET',
+        headers: {
+          'PRIVATE-TOKEN': token,
+        },
+      },
+    )
+    const result = (await response.json()) as GitLabMrFilesResponse
+    allFiles = allFiles.concat(result)
 
-//   const changes = result.changes.map(({ new_path, diff }) => {
-//     return { path: new_path, diff }
-//   })
+    page = response.headers.get('x-next-page')
+  }
 
-//   return { changes }
-// }
+  const ref = mrResult.source_branch
+  const ret = {
+    ref,
+    files: allFiles
+      // include/excludeで対象ファイルを選定
+      .filter(({ new_path, deleted_file }) => !deleted_file && isTarget({ filename: new_path, include, exclude }))
+      // 対象ファイルの内容を取得
+      .map(({ new_path: filename, diff: patch }) => async () => {
+        if (!patch) {
+          // バイナリ(もしくは巨大ファイル)
+          return { filename }
+        }
+
+        try {
+          if (useLocalSrc) {
+            // ローカルから取得
+            const raw = await readFile(filename, 'utf8')
+            return { filename, patch, raw, raw_url: filename }
+          } else {
+            // raw_urlから取得
+            const raw_url = `/api/v4/projects/${projectId}/repository/files/${encodeURIComponent(filename)}?ref=${ref}`
+            const response = await fetch(new URL(raw_url, server), {
+              method: 'GET',
+              headers: {
+                'PRIVATE-TOKEN': token,
+              },
+            })
+            const raw = await response.text()
+            return { filename, patch, raw, raw_url }
+          }
+        } catch (err) {
+          console.warn(`Error fetching ${filename}:`, err)
+          return { filename }
+        }
+      }),
+  }
+  console.log(
+    '# GitLab MR\n',
+    `
+- repository : ${mrResult.references?.full}
+- mergeRequestIid : ${mergeRequestIid}
+- ref : ${ret.ref}
+- files.length : ${ret.files.length}
+`,
+  )
+  return ret
+}

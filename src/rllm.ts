@@ -1,5 +1,5 @@
 import { rllmConfig } from './rllm-config.ts'
-import { getGithubPr, reviews } from './rllm-lib.ts'
+import { getGithubPr, getGitLabMr, reviews } from './rllm-lib.ts'
 
 const main = async () => {
   const { llm, src } = rllmConfig
@@ -21,6 +21,8 @@ const main = async () => {
       break
     }
     case 'gitlab': {
+      const { files } = await getGitLabMr(src)
+      await reviews({ ...llm, files })
       break
     }
   }
