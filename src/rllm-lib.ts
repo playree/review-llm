@@ -30,9 +30,9 @@ type LlmOllama = {
   apiKey?: string
   model: string
   prompt: string
-  limit_files?: number
+  limitFiles?: number
   think?: boolean
-  num_ctx?: number
+  ctxSize?: number
 }
 type LlmOpenAI = {
   type: 'openai'
@@ -40,7 +40,7 @@ type LlmOpenAI = {
   apiKey?: string
   model: string
   prompt: string
-  limit_files?: number
+  limitFiles?: number
 }
 export type RllmConfig = Readonly<{
   llm: Readonly<LlmOllama> | Readonly<LlmOpenAI>
@@ -84,7 +84,7 @@ export const reviewOllama = async ({
   model,
   prompt,
   think,
-  num_ctx,
+  ctxSize: num_ctx,
   fileSrc,
 }: LlmOllama & {
   fileSrc: () => Promise<FileSrc>
@@ -230,7 +230,7 @@ export const reviews = async (
   },
 ) => {
   const { files, ...llm } = params
-  if (llm.limit_files && llm.limit_files < files.length) {
+  if (llm.limitFiles && llm.limitFiles < files.length) {
     console.warn('Limit over:', files.length)
     return
   }
